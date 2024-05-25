@@ -28,8 +28,8 @@ impl Tile {
 
 #[derive(Debug)]
 pub struct Board {
-    pub height: usize,
     pub width: usize,
+    pub height: usize,
     pub mine_count: usize,
     pub flags: usize,
     pub tiles_left: usize,
@@ -79,12 +79,17 @@ impl Board {
 
     // Generate board with respect to first mined tile
     pub fn generate(&mut self, digged_tile: usize) -> Result<(), String> {
-        if self.width * self.height - 1 < self.mine_count {
+        let mut unmined_tiles = (0..(self.width * self.height)).collect::<Vec<usize>>();
+        unmined_tiles.remove(digged_tile);
+        for n_index in self.neighbours(digged_tile) {
+            let index = unmined_tiles.iter().position(|&r| r == n_index).unwrap();
+            unmined_tiles.remove(index);
+        }
+
+        if unmined_tiles.len() < self.mine_count {
             return Err("Not enouth tiles on the board".to_string());
         }
 
-        let mut unmined_tiles = (0..(self.width * self.height)).collect::<Vec<usize>>();
-        unmined_tiles.remove(digged_tile);
         let mut rng = rand::thread_rng();
         for _ in 0..self.mine_count {
             let r_tile = rng.gen_range(0..unmined_tiles.len());
@@ -102,7 +107,10 @@ impl Board {
     }
 
     // Perform outside action on board
-    pub fn action(&mut self, index: usize, action: Action) {
+    pub fn action(&mut self, index: usize, action: Action) -> Result<(), String> {
+        if !self.generated {
+            self.generate(index)?;
+        }
         let tile = &self.tiles[index / self.width][index % self.width];
         match (action, tile) {
             (Action::Flag, _) => {
@@ -121,7 +129,7 @@ impl Board {
 
             (Action::Dig, Tile { digged: true, .. }) => {
                 if tile.count == 0 {
-                    return;
+                    return Ok(());
                 }
 
                 let n_flags = self
@@ -136,10 +144,11 @@ impl Board {
                 }
             }
 
-            (Action::Dig, Tile { digged: false, .. }) => {
+            (Action::Dig, Tile { .. }) => {
                 self.to_dig.insert(index);
             }
-        }
+        };
+        Ok(())
     }
 
     // Advance state of the board
@@ -160,7 +169,7 @@ impl Board {
             }
             if tile.count == 0 {
                 for n_index in self.neighbours(index) {
-                    self.action(n_index, Action::Dig);
+                    self.action(n_index, Action::Dig).unwrap();
                 }
             }
         }
